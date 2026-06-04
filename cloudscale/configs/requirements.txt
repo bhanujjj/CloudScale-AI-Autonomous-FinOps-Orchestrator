@@ -1,0 +1,30 @@
+# CloudScale AI Orchestrator — Phase 1: RL Simulator
+# Pinned for reproducibility. Colab will install these into its own runtime.
+# Local install: pip install -r cloudscale/configs/requirements.txt
+
+# Core RL stack
+gymnasium==0.29.1
+stable-baselines3==2.3.2
+torch==2.3.1                # CPU for local; Colab provides CUDA wheels
+numpy==1.26.4
+pandas==2.2.2
+
+# Hyperparameter search
+optuna==3.6.1
+
+# MLOps / experiment tracking
+mlflow==2.14.3
+dagshub==0.3.14
+
+# Utilities
+pyyaml==6.0.1
+python-dotenv==1.0.1
+matplotlib==3.9.0
+tqdm==4.66.4
+rich>=13.1,<14
+structlog==24.2.0
+setuptools<80   # mlflow still needs pkg_resources; setuptools 80+ removed it
+
+# Testing
+pytest==8.2.2
+pytest-cov==5.0.0

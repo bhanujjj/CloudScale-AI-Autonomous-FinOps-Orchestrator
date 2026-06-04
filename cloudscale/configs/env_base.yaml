@@ -1,0 +1,46 @@
+# K8s Spot Environment defaults — overridable by Optuna during HP search.
+# Any field on K8sSpotConfig can be tuned; this file just keeps the base sane.
+
+env:
+  cpu_per_node: 100.0
+  mem_per_node: 100.0
+
+  # Pricing (USD / hr)
+  ondemand_price_per_hr: 0.50
+  spot_base_price_per_hr: 0.18
+  spot_price_volatility: 0.20
+
+  # Cluster bounds
+  min_nodes: 1
+  max_nodes: 20
+
+  # SLA
+  sla_p95_latency_ms: 250.0
+  sla_penalty_weight: 5.0
+
+  # Reward shaping
+  cost_weight: 1.0
+  churn_penalty: 0.02
+  sla_bonus: 0.01
+  interrupt_penalty: 0.50
+
+  # Workload dynamics
+  request_rate_base: 50.0
+  request_rate_amplitude: 30.0
+  request_rate_noise_std: 5.0
+  burst_probability: 0.02
+  burst_multiplier: 3.0
+
+  # Latency model
+  latency_baseline_ms: 40.0
+  latency_pressure_coeff: 1500.0
+
+  # Spot interruption model
+  spot_interrupt_base_prob: 0.003
+  spot_interrupt_price_threshold: 1.8
+
+  # Episode
+  episode_length_steps: 500
+  step_duration_minutes: 1.0
+
+  seed: 42

@@ -1,0 +1,30 @@
+{
+  "model": "cloudscale/models/ppo_seed42.zip",
+  "n_episodes": 2,
+  "mean_total_reward": 0.7902247354992631,
+  "mean_total_cost_usd": 4.169775264500734,
+  "mean_sla_violations": 0.0,
+  "mean_spot_fraction": 0.005964214711729622,
+  "episodes": [
+    {
+      "total_reward": 0.7901585473799833,
+      "total_cost_usd": 4.169841452620014,
+      "sla_violations": 0,
+      "mean_spot_nodes": 0.006,
+      "mean_ondemand_nodes": 1.0,
+      "spot_fraction": 0.005964214711729622,
+      "max_p95_ms": 209.39886878964776,
+      "p95_p95_ms": 49.75623056890094
+    },
+    {
+      "total_reward": 0.7902909236185429,
+      "total_cost_usd": 4.169709076381454,
+      "sla_violations": 0,
+      "mean_spot_nodes": 0.006,
+      "mean_ondemand_nodes": 1.0,
+      "spot_fraction": 0.005964214711729622,
+      "max_p95_ms": 212.89728518430405,
+      "p95_p95_ms": 48.09384336320664
+    }
+  ]
+}
