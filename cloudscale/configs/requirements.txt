@@ -6,7 +6,7 @@
 gymnasium==0.29.1
 stable-baselines3==2.3.2
 torch==2.3.1                # CPU for local; Colab provides CUDA wheels
-numpy==1.26.4
+numpy>=1.24  # let Colab use its pre-installed version to avoid binary incompatibility
 pandas==2.2.2
 
 # Hyperparameter search
