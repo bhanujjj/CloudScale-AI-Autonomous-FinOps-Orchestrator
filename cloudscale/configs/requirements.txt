@@ -5,8 +5,13 @@
 # Core RL stack
 gymnasium==0.29.1
 stable-baselines3==2.3.2
-torch==2.3.1                # CPU for local; Colab provides CUDA wheels
-numpy>=1.24  # let Colab use its pre-installed version to avoid binary incompatibility
+# torch + numpy: DO NOT install — Colab has pre-installed CUDA torch + numpy
+#               compiled against Colab's pre-installed packages (JAX, TF, etc.)
+#               Adding a different torch/numpy breaks the binary ABI.
+#               All gymnasium + sb3 code works fine with Colab's versions.
+# Local install (non-Colab): uncomment the next two lines
+# torch==2.3.1
+# numpy==1.26.4
 pandas==2.2.2
 
 # Hyperparameter search
@@ -23,7 +28,7 @@ matplotlib==3.9.0
 tqdm==4.66.4
 rich>=13.1,<14
 structlog==24.2.0
-setuptools<80   # mlflow still needs pkg_resources; setuptools 80+ removed it
+setuptools>=60  # Colab has its own setuptools; no pin needed
 
 # Testing
 pytest==8.2.2
