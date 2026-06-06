@@ -160,7 +160,11 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             LOG.info("mlflow.dagshub.connected", uri=tracking_uri)
             return True
         except Exception as e:
-            LOG.error("dagshub.connection_failed", error=str(e))
+            try:
+                error_msg = str(e) or e.__class__.__name__
+            except Exception:
+                error_msg = e.__class__.__name__
+            LOG.error("dagshub.connection_failed", error=error_msg)
             raise RuntimeError("DagsHub MLflow connection failed. Training stopped before PPO starts.") from e
 
     return _local_mlflow(mlflow, mlflow_cfg)
