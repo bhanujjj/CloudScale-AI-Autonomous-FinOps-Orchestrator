@@ -1,17 +1,16 @@
 # CloudScale AI Orchestrator — Phase 1: RL Simulator
 # Pinned for reproducibility on Colab T4.
 #
-# IMPORTANT: Do NOT install torch or numpy here.
-#   Colab pre-installs torch (with CUDA) and numpy compiled against
-#   Colab's pre-installed JAX/TF. Pinning different versions breaks
-#   the binary ABI. Just use whatever Colab already has — it works.
+# IMPORTANT for Colab: do NOT install torch or numpy here.
+#   Colab pre-installs torch (with CUDA) and a NumPy build that is
+#   binary-compatible with its pre-installed compiled packages. Changing
+#   NumPy inside a live notebook runtime can trigger errors like:
+#   "numpy.dtype size changed, may indicate binary incompatibility".
 #   For local install: uncomment the bottom block.
 
-# Core RL stack (pure Python deps only)
+# Core RL stack (leave torch + numpy to Colab)
 gymnasium==0.29.1
 stable-baselines3==2.3.2
-# torch is pre-installed on Colab, do not pin
-# numpy is pre-installed on Colab, do not pin
 pandas==2.2.2
 
 # Hyperparameter search
