@@ -11,23 +11,23 @@
 # Core RL stack (leave torch + numpy to Colab)
 gymnasium==0.29.1
 stable-baselines3==2.3.2
-pandas==2.2.2
+pandas>=2.2,<3
 
 # Hyperparameter search
 optuna==3.6.1
 
 # MLOps / experiment tracking
-mlflow==2.14.3
-dagshub==0.3.14
+mlflow==3.13.0
+dagshub==0.7.0
 
 # Utilities
-pyyaml==6.0.1
+pyyaml>=6.0.1,<7
 python-dotenv==1.0.1
-matplotlib==3.9.0
+matplotlib>=3.9,<4
 tqdm==4.66.4
-rich>=13.1,<14
+rich>=13.7,<14
 structlog==24.2.0
-setuptools>=60,<80  # mlflow needs pkg_resources (removed in setuptools 80+)
+setuptools>=60
 
 # Testing
 pytest==8.2.2
