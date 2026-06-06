@@ -121,7 +121,7 @@ def evaluate_policy(model, env_fn, n_episodes: int = 5) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# MLflow setup (DagsHub first, local fallback)
+# MLflow setup (DagsHub required unless --no-mlflow is passed)
 # ---------------------------------------------------------------------------
 
 def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
@@ -142,11 +142,11 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             os.environ["DAGSHUB_USER_TOKEN"] = token
             os.environ["DAGSHUB_TOKEN"] = token
         if not token:
-            LOG.warning(
+            LOG.error(
                 "dagshub.no_token",
-                hint="Set DAGSHUB_USER_TOKEN env var. Falling back to local sqlite MLflow.",
+                hint="Set DAGSHUB_USER_TOKEN in Colab Secrets, or pass --no-mlflow for local smoke tests.",
             )
-            return _local_mlflow(mlflow, mlflow_cfg)
+            raise RuntimeError("DagsHub token is required before training can start.")
         try:
             import dagshub
             dagshub.init(
@@ -159,8 +159,8 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             LOG.info("mlflow.dagshub.connected", uri=tracking_uri)
             return True
         except Exception as e:
-            LOG.warning("dagshub.connection_failed", error=str(e), fallback="local")
-            return _local_mlflow(mlflow, mlflow_cfg)
+            LOG.error("dagshub.connection_failed", error=str(e))
+            raise RuntimeError("DagsHub MLflow connection failed. Training stopped before PPO starts.") from e
 
     return _local_mlflow(mlflow, mlflow_cfg)
 
