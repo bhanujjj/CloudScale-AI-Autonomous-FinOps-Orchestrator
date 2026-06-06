@@ -149,6 +149,7 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             raise RuntimeError("DagsHub token is required before training can start.")
         try:
             import dagshub
+            dagshub.auth.add_app_token(token)
             dagshub.init(
                 repo_owner=mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7"),
                 repo_name=mlflow_cfg.get("dagshub_repo_name", "CloudScale-AI-Autonomous-FinOps-Orchestrator"),
