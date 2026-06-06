@@ -136,7 +136,8 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
 
     if tracking_uri and "dagshub.com" in tracking_uri:
         # Initialize DagsHub MLflow integration.
-        token = (os.environ.get("DAGSHUB_USER_TOKEN") or os.environ.get("DAGSHUB_TOKEN") or "").strip()
+        raw_token = os.environ.get("DAGSHUB_USER_TOKEN") or os.environ.get("DAGSHUB_TOKEN") or ""
+        token = "".join(raw_token.split())
         if token:
             os.environ["DAGSHUB_USER_TOKEN"] = token
             os.environ["DAGSHUB_TOKEN"] = token
