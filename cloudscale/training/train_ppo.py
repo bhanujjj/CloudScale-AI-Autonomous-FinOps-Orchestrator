@@ -136,11 +136,14 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
 
     if tracking_uri and "dagshub.com" in tracking_uri:
         # Initialize DagsHub MLflow integration.
-        token = os.environ.get("DAGSHUB_USER_TOKEN") or os.environ.get("DAGSHUB_TOKEN")
+        token = (os.environ.get("DAGSHUB_USER_TOKEN") or os.environ.get("DAGSHUB_TOKEN") or "").strip()
+        if token:
+            os.environ["DAGSHUB_USER_TOKEN"] = token
+            os.environ["DAGSHUB_TOKEN"] = token
         if not token:
             LOG.warning(
                 "dagshub.no_token",
-                hint="Set DAGSHUB_USER_TOKEN env var. Falling back to local file:// mlruns.",
+                hint="Set DAGSHUB_USER_TOKEN env var. Falling back to local sqlite MLflow.",
             )
             return _local_mlflow(mlflow, mlflow_cfg)
         try:
@@ -162,7 +165,7 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
 
 
 def _local_mlflow(mlflow, mlflow_cfg: dict) -> bool:
-    local_uri = f"file:{REPO_ROOT / 'mlruns'}"
+    local_uri = f"sqlite:///{REPO_ROOT / 'mlflow.db'}"
     mlflow.set_tracking_uri(local_uri)
     mlflow.set_experiment(mlflow_cfg.get("experiment_name", "cloudscale-ppo-phase1-local"))
     LOG.info("mlflow.local", uri=local_uri)
