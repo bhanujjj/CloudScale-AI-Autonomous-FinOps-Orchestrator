@@ -150,11 +150,13 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
         try:
             import dagshub
             
-            # Set standard MLflow env vars directly to bypass dagshub auth token errors
+            # Explicitly add the token using dagshub's auth module
+            dagshub.auth.add_app_token(token)
+            
+            # Set standard MLflow env vars directly as an additional safeguard
             os.environ["MLFLOW_TRACKING_USERNAME"] = mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7")
             os.environ["MLFLOW_TRACKING_PASSWORD"] = token
             
-            # Remove dagshub.auth.add_app_token(token) as it causes JSONDecodeErrors in Colab
             dagshub.init(
                 repo_owner=mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7"),
                 repo_name=mlflow_cfg.get("dagshub_repo_name", "CloudScale-AI-Autonomous-FinOps-Orchestrator"),
