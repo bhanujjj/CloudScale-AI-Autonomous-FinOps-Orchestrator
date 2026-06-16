@@ -148,30 +148,46 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             )
             raise RuntimeError("DagsHub token is required before training can start.")
         try:
-            import dagshub
-            
-            # Ensure DagsHub's library sees the token
-            os.environ["DAGSHUB_USER_TOKEN"] = token
-            
-            # This automatically injects the auth headers into MLflow
-            dagshub.init(
-                repo_owner=mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7"),
-                repo_name=mlflow_cfg.get("dagshub_repo_name", "CloudScale-AI-Autonomous-FinOps-Orchestrator"),
-                mlflow=True,
-            )
-            
-            mlflow.set_tracking_uri(tracking_uri)
+            # ── Bulletproof DagsHub MLflow auth ──────────────────────────
+            # The `dagshub` Python library's token-validation path is broken
+            # in Google Colab (JSONDecodeError / "token not valid" depending
+            # on the code path).  We don't need the library at all.
+            #
+            # MLflow's REST client natively supports HTTP Basic Auth when
+            # credentials are embedded in the tracking URI:
+            #   https://user:token@dagshub.com/owner/repo.mlflow
+            #
+            # This is the same mechanism the DagsHub web UI tells you to
+            # use ("set MLFLOW_TRACKING_USERNAME / PASSWORD"), but embedding
+            # them in the URI guarantees they are picked up regardless of
+            # import order or env-var timing issues.
+            # ─────────────────────────────────────────────────────────────
+            from urllib.parse import urlparse, urlunparse
+
+            owner = mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7")
+            parsed = urlparse(tracking_uri)
+
+            # Build an authenticated URI:  https://owner:token@dagshub.com/…
+            authed_netloc = f"{owner}:{token}@{parsed.hostname}"
+            if parsed.port:
+                authed_netloc += f":{parsed.port}"
+            authed_uri = urlunparse(parsed._replace(netloc=authed_netloc))
+
+            # Also set the env vars as a belt-and-suspenders fallback
+            os.environ["MLFLOW_TRACKING_USERNAME"] = owner
+            os.environ["MLFLOW_TRACKING_PASSWORD"] = token
+
+            mlflow.set_tracking_uri(authed_uri)
             mlflow.set_experiment(mlflow_cfg.get("experiment_name", "cloudscale-ppo-phase1"))
-            LOG.info("mlflow.dagshub.connected", uri=tracking_uri)
+            LOG.info("mlflow.dagshub.connected", uri=tracking_uri)  # log without creds
             return True
         except Exception as e:
-            try:
-                error_msg = str(e) or e.__class__.__name__
-            except Exception:
-                error_msg = e.__class__.__name__
-            LOG.error("dagshub.connection_failed", error=error_msg)
-            raise RuntimeError("DagsHub MLflow connection failed. Training stopped before PPO starts.") from e
-
+            LOG.error("dagshub.connection_failed", error=str(e) or e.__class__.__name__)
+            raise RuntimeError(
+                f"DagsHub MLflow connection failed: {e}\n"
+                "Verify your DAGSHUB_USER_TOKEN is correct and the repo exists at:\n"
+                f"  {tracking_uri}"
+            ) from e
     return _local_mlflow(mlflow, mlflow_cfg)
 
 
