@@ -3,7 +3,7 @@ Evaluate a trained PPO policy and produce plots + a metrics JSON.
 
 Usage
 -----
-    python -m cloudscale.training.eval_policy --model cloudscale/models/ppo_seed42.zip \\
+    python -m cloudscale.training.eval_policy --model cloudscale/models/ppo_seed42.zip \
         --episodes 5 --out-dir cloudscale/logs/eval
 """
 
@@ -16,14 +16,12 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
-
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
 import numpy as np
 import structlog
 
 LOG = structlog.get_logger("cloudscale.eval")
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -36,39 +34,47 @@ def load_env_from_config():
 def rollout(model, env, seed: int) -> dict[str, list]:
     obs, _ = env.reset(seed=seed)
     history = {
-        "t": [], "spot_nodes": [], "ondemand_nodes": [], "spot_price": [],
+        "t": [], "spot_nodes_A": [], "spot_nodes_B": [], "spot_nodes_C": [], 
+        "ondemand_nodes": [], "spot_price_A": [], "spot_price_B": [], "spot_price_C": [],
         "cpu_util": [], "mem_util": [], "p95_ms": [], "reward": [],
         "action": [], "cost_cum": [], "sla_breach": [],
     }
     done = False
     while not done:
         action, _ = model.predict(obs, deterministic=True)
+        info = env._get_info()
         history["t"].append(env.t)
-        history["spot_nodes"].append(env.spot_nodes)
-        history["ondemand_nodes"].append(env.ondemand_nodes)
-        history["spot_price"].append(env.spot_price)
-        history["cpu_util"].append(env.last_cpu_util)
-        history["mem_util"].append(env.last_mem_util)
-        history["p95_ms"].append(env.last_p95_ms)
+        history["spot_nodes_A"].append(info["spot_nodes_A"])
+        history["spot_nodes_B"].append(info["spot_nodes_B"])
+        history["spot_nodes_C"].append(info["spot_nodes_C"])
+        history["ondemand_nodes"].append(info["ondemand_nodes"])
+        history["spot_price_A"].append(info["spot_price_A"])
+        history["spot_price_B"].append(info["spot_price_B"])
+        history["spot_price_C"].append(info["spot_price_C"])
+        history["cpu_util"].append(info["cpu_util"])
+        history["mem_util"].append(info["mem_util"])
+        history["p95_ms"].append(info["p95_latency_ms"])
         history["action"].append(int(action))
-        obs, r, term, trunc, info = env.step(int(action))
+        
+        obs, r, term, trunc, info_step = env.step(int(action))
+        
         history["reward"].append(r)
         history["cost_cum"].append(env.episode_cost)
-        history["sla_breach"].append(bool(info.get("sla_breach")))
+        history["sla_breach"].append(bool(info_step.get("sla_breach")))
         done = term or trunc
     return history
 
 
 def summarize(episode: dict[str, list]) -> dict[str, float]:
+    total_spot = np.array(episode["spot_nodes_A"]) + np.array(episode["spot_nodes_B"]) + np.array(episode["spot_nodes_C"])
     return {
         "total_reward": float(sum(episode["reward"])),
         "total_cost_usd": float(episode["cost_cum"][-1]),
         "sla_violations": int(sum(episode["sla_breach"])),
-        "mean_spot_nodes": float(np.mean(episode["spot_nodes"])),
+        "mean_spot_nodes": float(np.mean(total_spot)),
         "mean_ondemand_nodes": float(np.mean(episode["ondemand_nodes"])),
         "spot_fraction": float(
-            np.mean(episode["spot_nodes"])
-            / max(1e-3, np.mean(episode["spot_nodes"]) + np.mean(episode["ondemand_nodes"]))
+            np.mean(total_spot) / max(1e-3, np.mean(total_spot) + np.mean(episode["ondemand_nodes"]))
         ),
         "max_p95_ms": float(np.max(episode["p95_ms"])),
         "p95_p95_ms": float(np.percentile(episode["p95_ms"], 95)),
@@ -79,16 +85,19 @@ def plot_episode(ep: dict[str, list], out_path: Path) -> None:
     fig, axes = plt.subplots(4, 1, figsize=(12, 12), sharex=True)
 
     ax = axes[0]
-    ax.plot(ep["t"], ep["spot_nodes"], label="Spot nodes", color="#1f77b4")
+    ax.plot(ep["t"], ep["spot_nodes_A"], label="Spot Zone A", color="#1f77b4")
+    ax.plot(ep["t"], ep["spot_nodes_B"], label="Spot Zone B", color="#17becf")
+    ax.plot(ep["t"], ep["spot_nodes_C"], label="Spot Zone C", color="#9edae5")
     ax.plot(ep["t"], ep["ondemand_nodes"], label="On-Demand nodes", color="#d62728")
     ax.set_ylabel("Node count")
-    ax.legend(loc="upper right")
-    ax.set_title("CloudScale K8s+Spot Policy Rollout")
+    ax.legend(loc="upper left")
+    ax.set_title("Multi-Zone CloudScale Arbitrage Rollout")
 
     ax = axes[1]
     ax.plot(ep["t"], ep["cpu_util"], label="CPU", color="#2ca02c")
     ax.plot(ep["t"], ep["mem_util"], label="Memory", color="#ff7f0e", alpha=0.7)
     ax.axhline(0.7, color="grey", linestyle="--", alpha=0.5, label="Pressure threshold")
+    ax.axhline(0.8, color="red", linestyle=":", alpha=0.8, label="Headroom limit")
     ax.set_ylabel("Utilization")
     ax.set_ylim(0, 1.1)
     ax.legend(loc="upper right")
@@ -100,9 +109,12 @@ def plot_episode(ep: dict[str, list], out_path: Path) -> None:
     ax.legend(loc="upper right")
 
     ax = axes[3]
-    ax.plot(ep["t"], ep["spot_price"], color="#8c564b")
+    ax.plot(ep["t"], ep["spot_price_A"], color="#8c564b", label="Zone A")
+    ax.plot(ep["t"], ep["spot_price_B"], color="#c49c94", label="Zone B")
+    ax.plot(ep["t"], ep["spot_price_C"], color="#e377c2", label="Zone C")
     ax.set_ylabel("Spot $/hr")
     ax.set_xlabel("sim step (1 min)")
+    ax.legend(loc="upper left")
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
