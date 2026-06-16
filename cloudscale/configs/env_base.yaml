@@ -27,11 +27,12 @@ env:
   cpu_penalty_weight: 2.0
 
   # Workload dynamics
-  request_rate_base: 50.0
-  request_rate_amplitude: 30.0
-  request_rate_noise_std: 5.0
-  burst_probability: 0.02
-  burst_multiplier: 3.0
+  request_rate_base: 300.0       # requests/sec at midday baseline
+  request_rate_amplitude: 250.0  # +/- around base over a day
+  request_rate_noise_std: 20.0
+  flash_sale_probability: 0.005  # chance per step to trigger a massive event
+  flash_sale_duration_mean: 45.0 # how long the flash sale lasts
+  flash_sale_multiplier: 4.0     # 4x traffic multiplier during flash sale
 
   # Latency model
   latency_baseline_ms: 40.0

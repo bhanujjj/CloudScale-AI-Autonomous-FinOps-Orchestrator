@@ -95,11 +95,12 @@ class K8sSpotConfig:
     cpu_penalty_weight: float = 2.0
 
     # Workload dynamics
-    request_rate_base: float = 50.0       # requests/sec at midday baseline
-    request_rate_amplitude: float = 30.0  # +/- around base over a day
-    request_rate_noise_std: float = 5.0
-    burst_probability: float = 0.02       # chance per step of a 3x spike
-    burst_multiplier: float = 3.0
+    request_rate_base: float = 300.0       # requests/sec at midday baseline
+    request_rate_amplitude: float = 250.0  # +/- around base over a day
+    request_rate_noise_std: float = 20.0
+    flash_sale_probability: float = 0.005       # chance per step to start a flash sale
+    flash_sale_duration_mean: float = 45.0      # average duration in steps
+    flash_sale_multiplier: float = 4.0          # traffic multiplier during flash sale
 
     # Latency model
     latency_baseline_ms: float = 40.0
@@ -162,19 +163,34 @@ class K8sSpotEnv(gym.Env):
         self.episode_cost: float = 0.0
         self.episode_sla_violations: int = 0
         self.episode_headroom_breaches: int = 0
+        self.flash_sale_steps_left: int = 0
 
     # ------------------------------------------------------------------ helpers
     def _current_request_rate(self) -> float:
-        """Daily sinusoid + Gaussian noise + occasional bursts."""
-        # hour_of_day in [0, 24), cycles over episode
+        """Daily sinusoid + Gaussian noise + stateful Flash Sales."""
+        # 1. Base Daily Sinusoid
         hours = (self.t * self.cfg.step_duration_minutes) / 60.0
         daily = self.cfg.request_rate_base + self.cfg.request_rate_amplitude * math.sin(
             2 * math.pi * (hours - 6.0) / 24.0
         )
+        
+        # 2. Stateful Flash Sale Logic
+        if self.flash_sale_steps_left > 0:
+            self.flash_sale_steps_left -= 1
+            multiplier = self.cfg.flash_sale_multiplier
+        else:
+            multiplier = 1.0
+            # Chance to start a new flash sale
+            if self.rng.random() < self.cfg.flash_sale_probability:
+                # Determine how long the flash sale lasts
+                duration = int(self.rng.normal(self.cfg.flash_sale_duration_mean, 10.0))
+                self.flash_sale_steps_left = max(5, duration)
+                multiplier = self.cfg.flash_sale_multiplier
+
+        # 3. Add noise and calculate final rate
         noise = self.rng.normal(0.0, self.cfg.request_rate_noise_std)
-        rate = max(0.0, daily + noise)
-        if self.rng.random() < self.cfg.burst_probability:
-            rate *= self.cfg.burst_multiplier
+        rate = max(0.0, daily + noise) * multiplier
+        
         return rate
 
     def _total_capacity(self) -> float:
@@ -293,6 +309,7 @@ class K8sSpotEnv(gym.Env):
         self.episode_cost = 0.0
         self.episode_sla_violations = 0
         self.episode_headroom_breaches = 0
+        self.flash_sale_steps_left = 0
 
         return self._get_obs(), self._get_info()
 
