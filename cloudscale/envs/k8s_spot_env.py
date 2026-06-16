@@ -91,6 +91,8 @@ class K8sSpotConfig:
     churn_penalty: float = 0.02
     sla_bonus: float = 0.01
     interrupt_penalty: float = 0.50
+    cpu_safe_limit: float = 0.80
+    cpu_penalty_weight: float = 2.0
 
     # Workload dynamics
     request_rate_base: float = 50.0       # requests/sec at midday baseline
@@ -159,6 +161,7 @@ class K8sSpotEnv(gym.Env):
         self.last_action_was_noop: bool = True
         self.episode_cost: float = 0.0
         self.episode_sla_violations: int = 0
+        self.episode_headroom_breaches: int = 0
 
     # ------------------------------------------------------------------ helpers
     def _current_request_rate(self) -> float:
@@ -289,6 +292,7 @@ class K8sSpotEnv(gym.Env):
         self.last_action_was_noop = True
         self.episode_cost = 0.0
         self.episode_sla_violations = 0
+        self.episode_headroom_breaches = 0
 
         return self._get_obs(), self._get_info()
 
@@ -331,6 +335,13 @@ class K8sSpotEnv(gym.Env):
             reward -= self.cfg.sla_penalty_weight * (overage ** 2)
         else:
             reward += self.cfg.sla_bonus
+            
+        headroom_breach = cpu > self.cfg.cpu_safe_limit
+        if headroom_breach:
+            self.episode_headroom_breaches += 1
+            cpu_overage = cpu - self.cfg.cpu_safe_limit
+            reward -= self.cfg.cpu_penalty_weight * cpu_overage
+
         if was_churn:
             reward -= self.cfg.churn_penalty
         if interrupted:
@@ -388,6 +399,7 @@ class K8sSpotEnv(gym.Env):
             "p95_latency_ms": self.last_p95_ms,
             "episode_cost": self.episode_cost,
             "episode_sla_violations": self.episode_sla_violations,
+            "episode_headroom_breaches": self.episode_headroom_breaches,
         }
 
     def render(self) -> str | None:

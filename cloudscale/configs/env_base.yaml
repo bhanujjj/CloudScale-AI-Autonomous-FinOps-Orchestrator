@@ -23,6 +23,8 @@ env:
   churn_penalty: 0.02
   sla_bonus: 0.01
   interrupt_penalty: 0.50
+  cpu_safe_limit: 0.80
+  cpu_penalty_weight: 2.0
 
   # Workload dynamics
   request_rate_base: 50.0
