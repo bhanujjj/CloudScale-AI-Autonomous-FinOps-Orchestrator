@@ -148,10 +148,17 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             )
             raise RuntimeError("DagsHub token is required before training can start.")
         try:
-            # Bypass the dagshub python package entirely to avoid Colab JSON/Auth bugs.
-            # DagsHub's MLflow tracking works natively with standard MLflow env vars.
-            os.environ["MLFLOW_TRACKING_USERNAME"] = mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7")
-            os.environ["MLFLOW_TRACKING_PASSWORD"] = token
+            import dagshub
+            
+            # Ensure DagsHub's library sees the token
+            os.environ["DAGSHUB_USER_TOKEN"] = token
+            
+            # This automatically injects the auth headers into MLflow
+            dagshub.init(
+                repo_owner=mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7"),
+                repo_name=mlflow_cfg.get("dagshub_repo_name", "CloudScale-AI-Autonomous-FinOps-Orchestrator"),
+                mlflow=True,
+            )
             
             mlflow.set_tracking_uri(tracking_uri)
             mlflow.set_experiment(mlflow_cfg.get("experiment_name", "cloudscale-ppo-phase1"))
