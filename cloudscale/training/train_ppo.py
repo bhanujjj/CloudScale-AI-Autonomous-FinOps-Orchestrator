@@ -148,38 +148,47 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
             )
             raise RuntimeError("DagsHub token is required before training can start.")
         try:
-            # ── Bulletproof DagsHub MLflow auth ──────────────────────────
-            # The `dagshub` Python library's token-validation path is broken
-            # in Google Colab (JSONDecodeError / "token not valid" depending
-            # on the code path).  We don't need the library at all.
-            #
-            # MLflow's REST client natively supports HTTP Basic Auth when
-            # credentials are embedded in the tracking URI:
-            #   https://user:token@dagshub.com/owner/repo.mlflow
-            #
-            # This is the same mechanism the DagsHub web UI tells you to
-            # use ("set MLFLOW_TRACKING_USERNAME / PASSWORD"), but embedding
-            # them in the URI guarantees they are picked up regardless of
-            # import order or env-var timing issues.
-            # ─────────────────────────────────────────────────────────────
-            from urllib.parse import urlparse, urlunparse
+            # ── Monkey-patch dagshub's broken token validation ───────
+            # WHY THIS IS NEEDED:
+            #   • DagsHub's MLflow server requires dagshub.init(mlflow=True)
+            #     to inject its custom auth headers into MLflow — plain
+            #     MLFLOW_TRACKING_USERNAME/PASSWORD env vars return 401.
+            #   • But EVERY code path through the dagshub library calls
+            #     TokenStorage.is_valid_token(), which hits an API endpoint
+            #     that returns non-JSON (HTML/empty) in Google Colab,
+            #     crashing with JSONDecodeError or "token not valid".
+            #   • Solution: patch that ONE broken validation function to
+            #     skip the network check, then let dagshub.init() do its
+            #     job setting up MLflow auth properly.
+            # ─────────────────────────────────────────────────────────
+            import dagshub
+            import dagshub.auth.tokens as _dagshub_tokens
 
             owner = mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7")
-            parsed = urlparse(tracking_uri)
+            repo_name = mlflow_cfg.get("dagshub_repo_name", "CloudScale-AI-Autonomous-FinOps-Orchestrator")
 
-            # Build an authenticated URI:  https://owner:token@dagshub.com/…
-            authed_netloc = f"{owner}:{token}@{parsed.hostname}"
-            if parsed.port:
-                authed_netloc += f":{parsed.port}"
-            authed_uri = urlunparse(parsed._replace(netloc=authed_netloc))
+            # Save the original validation function
+            _orig_is_valid = _dagshub_tokens.TokenStorage.is_valid_token
 
-            # Also set the env vars as a belt-and-suspenders fallback
-            os.environ["MLFLOW_TRACKING_USERNAME"] = owner
-            os.environ["MLFLOW_TRACKING_PASSWORD"] = token
+            # Patch: always return True (token was already verified externally)
+            _dagshub_tokens.TokenStorage.is_valid_token = staticmethod(
+                lambda *args, **kwargs: True
+            )
 
-            mlflow.set_tracking_uri(authed_uri)
+            try:
+                os.environ["DAGSHUB_USER_TOKEN"] = token
+                dagshub.auth.add_app_token(token)
+                dagshub.init(
+                    repo_owner=owner,
+                    repo_name=repo_name,
+                    mlflow=True,
+                )
+            finally:
+                # Restore original validation (cleanup)
+                _dagshub_tokens.TokenStorage.is_valid_token = _orig_is_valid
+
             mlflow.set_experiment(mlflow_cfg.get("experiment_name", "cloudscale-ppo-phase1"))
-            LOG.info("mlflow.dagshub.connected", uri=tracking_uri)  # log without creds
+            LOG.info("mlflow.dagshub.connected", uri=tracking_uri)
             return True
         except Exception as e:
             LOG.error("dagshub.connection_failed", error=str(e) or e.__class__.__name__)
@@ -188,6 +197,7 @@ def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
                 "Verify your DAGSHUB_USER_TOKEN is correct and the repo exists at:\n"
                 f"  {tracking_uri}"
             ) from e
+
     return _local_mlflow(mlflow, mlflow_cfg)
 
 
