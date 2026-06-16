@@ -3,7 +3,7 @@ PPO training pipeline for CloudScale K8s Spot environment.
 
 Features:
   * Single-mode (train once) or Optuna HP-search mode
-  * MLflow logging to DagsHub (or local fallback if DagsHub is unreachable)
+  * Weights & Biases (W&B) experiment tracking
   * Reproducible seeds
   * Saves best policy to models/
 
@@ -12,12 +12,12 @@ Run modes
   # Single training run with defaults from ppo_base.yaml
   python -m cloudscale.training.train_ppo --mode single
 
-  # Optuna sweep with 20 trials, tracking to DagsHub
+  # Optuna sweep with 20 trials, tracking to W&B
   python -m cloudscale.training.train_ppo --mode optuna --n-trials 20
 
-  # Smoke test on CPU: 5k timesteps, 1 trial, local MLflow
+  # Smoke test on CPU: 5k timesteps, no W&B logging
   python -m cloudscale.training.train_ppo --mode single --total-timesteps 5000 \\
-      --no-mlflow --device cpu
+      --no-wandb --device cpu
 """
 
 from __future__ import annotations
@@ -121,92 +121,46 @@ def evaluate_policy(model, env_fn, n_episodes: int = 5) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# MLflow setup (DagsHub required unless --no-mlflow is passed)
+# Weights & Biases setup
 # ---------------------------------------------------------------------------
 
-def setup_mlflow(cfg: dict, use_mlflow: bool) -> bool:
-    """Returns True if MLflow was set up successfully."""
-    if not use_mlflow:
-        LOG.info("mlflow.disabled")
+def setup_wandb(cfg: dict, use_wandb: bool, seed: int) -> bool:
+    """Initialise a W&B run. Returns True if W&B was set up successfully."""
+    if not use_wandb:
+        LOG.info("wandb.disabled")
         return False
 
-    import mlflow
-    mlflow_cfg = cfg.get("mlflow", {})
-    tracking_uri = mlflow_cfg.get("tracking_uri")
+    import wandb
 
-    if tracking_uri and "dagshub.com" in tracking_uri:
-        # Initialize DagsHub MLflow integration.
-        raw_token = os.environ.get("DAGSHUB_USER_TOKEN") or os.environ.get("DAGSHUB_TOKEN") or ""
-        token = "".join(raw_token.split())
-        if token:
-            os.environ["DAGSHUB_USER_TOKEN"] = token
-            os.environ["DAGSHUB_TOKEN"] = token
-        if not token:
-            LOG.error(
-                "dagshub.no_token",
-                hint="Set DAGSHUB_USER_TOKEN in Colab Secrets, or pass --no-mlflow for local smoke tests.",
-            )
-            raise RuntimeError("DagsHub token is required before training can start.")
-        try:
-            # ── Monkey-patch dagshub's broken token validation ───────
-            # WHY THIS IS NEEDED:
-            #   • DagsHub's MLflow server requires dagshub.init(mlflow=True)
-            #     to inject its custom auth headers into MLflow — plain
-            #     MLFLOW_TRACKING_USERNAME/PASSWORD env vars return 401.
-            #   • But EVERY code path through the dagshub library calls
-            #     TokenStorage.is_valid_token(), which hits an API endpoint
-            #     that returns non-JSON (HTML/empty) in Google Colab,
-            #     crashing with JSONDecodeError or "token not valid".
-            #   • Solution: patch that ONE broken validation function to
-            #     skip the network check, then let dagshub.init() do its
-            #     job setting up MLflow auth properly.
-            # ─────────────────────────────────────────────────────────
-            import dagshub
-            import dagshub.auth.tokens as _dagshub_tokens
+    wandb_cfg = cfg.get("wandb", {})
 
-            owner = mlflow_cfg.get("dagshub_repo_owner", "bhanujbhalla7")
-            repo_name = mlflow_cfg.get("dagshub_repo_name", "CloudScale-AI-Autonomous-FinOps-Orchestrator")
+    # Read token from environment (set via Colab Secrets → WANDB_API_KEY)
+    token = os.environ.get("WANDB_API_KEY", "").strip()
+    if not token:
+        LOG.error(
+            "wandb.no_token",
+            hint="Set WANDB_API_KEY in Colab Secrets, or pass --no-wandb for local smoke tests.",
+        )
+        raise RuntimeError("WANDB_API_KEY is required before training can start.")
 
-            # Save the original validation function
-            _orig_is_valid = _dagshub_tokens.TokenStorage.is_valid_token
-
-            # Patch: always return True (token was already verified externally)
-            _dagshub_tokens.TokenStorage.is_valid_token = staticmethod(
-                lambda *args, **kwargs: True
-            )
-
-            try:
-                os.environ["DAGSHUB_USER_TOKEN"] = token
-                dagshub.auth.add_app_token(token)
-                dagshub.init(
-                    repo_owner=owner,
-                    repo_name=repo_name,
-                    mlflow=True,
-                )
-            finally:
-                # Restore original validation (cleanup)
-                _dagshub_tokens.TokenStorage.is_valid_token = _orig_is_valid
-
-            mlflow.set_experiment(mlflow_cfg.get("experiment_name", "cloudscale-ppo-phase1"))
-            LOG.info("mlflow.dagshub.connected", uri=tracking_uri)
-            return True
-        except Exception as e:
-            LOG.error("dagshub.connection_failed", error=str(e) or e.__class__.__name__)
-            raise RuntimeError(
-                f"DagsHub MLflow connection failed: {e}\n"
-                "Verify your DAGSHUB_USER_TOKEN is correct and the repo exists at:\n"
-                f"  {tracking_uri}"
-            ) from e
-
-    return _local_mlflow(mlflow, mlflow_cfg)
-
-
-def _local_mlflow(mlflow, mlflow_cfg: dict) -> bool:
-    local_uri = f"sqlite:///{REPO_ROOT / 'mlflow.db'}"
-    mlflow.set_tracking_uri(local_uri)
-    mlflow.set_experiment(mlflow_cfg.get("experiment_name", "cloudscale-ppo-phase1-local"))
-    LOG.info("mlflow.local", uri=local_uri)
-    return True
+    try:
+        wandb.login(key=token, relogin=True)
+        wandb.init(
+            entity=wandb_cfg.get("entity", "bhanujbhalla7-mpstme"),
+            project=wandb_cfg.get("project", "cloudscale-ppo-phase1"),
+            config=cfg,
+            name=f"ppo-seed{seed}-{int(time.time())}",
+            tags=wandb_cfg.get("tags", ["ppo", "phase1", "k8s-spot"]),
+            save_code=True,
+        )
+        LOG.info("wandb.connected", entity=wandb_cfg.get("entity"), project=wandb_cfg.get("project"))
+        return True
+    except Exception as e:
+        LOG.error("wandb.connection_failed", error=str(e))
+        raise RuntimeError(
+            f"W&B connection failed: {e}\n"
+            "Verify your WANDB_API_KEY is correct (https://wandb.ai/authorize)."
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +169,6 @@ def _local_mlflow(mlflow, mlflow_cfg: dict) -> bool:
 
 def train_single(args, cfg: dict) -> dict[str, float]:
     """Train PPO once with the (possibly Optuna-overridden) config."""
-    import mlflow
     import torch
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -253,22 +206,31 @@ def train_single(args, cfg: dict) -> dict[str, float]:
     metrics["train/total_timesteps"] = args.total_timesteps
     LOG.info("eval.results", **metrics)
 
-    # MLflow logging
-    if args.use_mlflow:
-        run_name = f"{cfg.get('mlflow', {}).get('run_name_prefix', 'ppo')}-seed{args.seed}-{int(time.time())}"
-        with mlflow.start_run(run_name=run_name):
-            mlflow.log_params({k: v for k, v in ppo_kwargs.items() if not isinstance(v, dict)})
-            mlflow.log_params(asdict(env_cfg))
-            mlflow.log_metrics(metrics)
-            if cfg.get("mlflow", {}).get("log_model_artifact", True):
-                model_path = MODELS_DIR / f"ppo_seed{args.seed}.zip"
-                model.save(model_path)
-                mlflow.log_artifact(str(model_path), artifact_path="model")
-                LOG.info("model.saved", path=str(model_path))
-    else:
-        model_path = MODELS_DIR / f"ppo_seed{args.seed}.zip"
-        model.save(model_path)
-        LOG.info("model.saved_local", path=str(model_path))
+    # Save model
+    model_path = MODELS_DIR / f"ppo_seed{args.seed}.zip"
+    model.save(model_path)
+    LOG.info("model.saved", path=str(model_path))
+
+    # W&B logging
+    if args.use_wandb:
+        import wandb
+        # Log hyperparameters
+        flat_params = {k: v for k, v in ppo_kwargs.items() if not isinstance(v, dict)}
+        flat_params.update(asdict(env_cfg))
+        wandb.config.update(flat_params, allow_val_change=True)
+        # Log metrics
+        wandb.log(metrics)
+        # Upload model artifact
+        wandb_cfg = cfg.get("wandb", {})
+        if wandb_cfg.get("log_model_artifact", True):
+            artifact = wandb.Artifact(
+                name=f"ppo-model-seed{args.seed}",
+                type="model",
+                description="Trained PPO policy for K8s Spot orchestration",
+            )
+            artifact.add_file(str(model_path))
+            wandb.log_artifact(artifact)
+            LOG.info("wandb.artifact_logged", path=str(model_path))
 
     return metrics
 
@@ -278,7 +240,6 @@ def train_single(args, cfg: dict) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def train_optuna(args, cfg: dict) -> dict[str, Any]:
-    import mlflow
     import optuna
     from stable_baselines3 import PPO
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -330,10 +291,13 @@ def train_optuna(args, cfg: dict) -> dict[str, Any]:
         metrics = evaluate_policy(model, _make_monitored, n_episodes=args.eval_episodes)
         mean_r = metrics["eval/mean_reward"]
 
-        if args.use_mlflow:
-            with mlflow.start_run(run_name=f"optuna-trial-{trial.number}", nested=True):
-                mlflow.log_params(trial.params)
-                mlflow.log_metrics(metrics)
+        if args.use_wandb:
+            import wandb
+            wandb.log({
+                "trial/number": trial.number,
+                **trial.params,
+                **metrics,
+            })
         # Optuna pruning hook (intermediate)
         trial.report(mean_r, step=args.total_timesteps)
         if trial.should_prune():
@@ -348,10 +312,12 @@ def train_optuna(args, cfg: dict) -> dict[str, Any]:
         best_value=study.best_value,
         best_params=study.best_params,
     )
-    if args.use_mlflow:
-        with mlflow.start_run(run_name="optuna-summary"):
-            mlflow.log_params(study.best_params)
-            mlflow.log_metric("best_value", study.best_value)
+    if args.use_wandb:
+        import wandb
+        wandb.log({
+            "optuna/best_value": study.best_value,
+            **{f"optuna/best_{k}": v for k, v in study.best_params.items()},
+        })
     return {"best_value": study.best_value, "best_params": study.best_params}
 
 
@@ -368,8 +334,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eval-episodes", type=int, default=5)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
-    p.add_argument("--no-mlflow", dest="use_mlflow", action="store_false")
-    p.set_defaults(use_mlflow=True)
+    p.add_argument("--no-wandb", dest="use_wandb", action="store_false")
+    p.set_defaults(use_wandb=True)
     return p.parse_args()
 
 
@@ -387,12 +353,17 @@ def main() -> int:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     set_global_seed(args.seed)
-    setup_mlflow(cfg, use_mlflow=args.use_mlflow)
+    setup_wandb(cfg, use_wandb=args.use_wandb, seed=args.seed)
 
     if args.mode == "single":
         result = train_single(args, cfg)
     else:
         result = train_optuna(args, cfg)
+
+    # Finish W&B run cleanly
+    if args.use_wandb:
+        import wandb
+        wandb.finish()
 
     print(json.dumps(result, indent=2, default=str))
     return 0

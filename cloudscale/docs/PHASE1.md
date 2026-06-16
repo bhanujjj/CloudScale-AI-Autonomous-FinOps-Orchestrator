@@ -12,8 +12,8 @@ locally on your Mac (CPU is fine) or on a free Google Colab T4 GPU.
    load, random spot interruptions, and an SLA on p95 latency.
 2. A **PPO training pipeline** (`cloudscale/training/train_ppo.py`) with
    both a single-run mode and an **Optuna hyperparameter sweep**.
-3. **MLflow tracking to DagsHub** so every experiment (params, metrics,
-   model artifact) is automatically logged.
+3. **W&B experiment tracking** so every experiment (params, metrics,
+   model artifact) is automatically logged to your cloud dashboard.
 4. An **eval harness** (`cloudscale/training/eval_policy.py`) that
    rolls out the trained policy and produces nice plots.
 5. A **Google Colab notebook** that runs the whole training in ~5 minutes
@@ -41,22 +41,22 @@ locally on your Mac (CPU is fine) or on a free Google Colab T4 GPU.
 ```bash
 source cloudscale-venv/bin/activate
 python -m cloudscale.training.train_ppo \
-    --mode single --total-timesteps 2000 --no-mlflow --device cpu
+    --mode single --total-timesteps 2000 --no-wandb --device cpu
 ```
 
 ### B. Local Optuna sweep (CPU, ~10-20 min for 5 trials × 20k steps)
 
 ```bash
 python -m cloudscale.training.train_ppo \
-    --mode optuna --n-trials 5 --total-timesteps 20000 --no-mlflow --device cpu
+    --mode optuna --n-trials 5 --total-timesteps 20000 --no-wandb --device cpu
 ```
 
 ### C. Colab T4 training (recommended, 5-20 min)
 
 See `cloudscale/notebooks/train_colab.ipynb`. You'll need:
 
-- **DagsHub user token** (free, https://dagshub.com/user/settings/tokens)
-- Add it as `DAGSHUB_USER_TOKEN` in Colab's secrets panel (🔑 icon)
+- **W&B API key** (free, https://wandb.ai/authorize)
+- Add it as `WANDB_API_KEY` in Colab's secrets panel (🔑 icon)
 - Then run all cells in order
 
 ### D. Evaluate

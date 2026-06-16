@@ -33,14 +33,12 @@ optuna:
   sampler: "tpe"                  # TPE sampler
   pruner: "median"                # MedianPruner — kills bad trials early
   study_name: "cloudscale-ppo-v1"
-  storage: null                   # set via env var to use remote DagsHub storage
+  storage: null                   # set via env var to use remote storage
   n_jobs: 1                       # 1 GPU = sequential trials; CPU can parallelize
 
-# DagsHub / MLflow
-mlflow:
-  tracking_uri: "https://dagshub.com/bhanujbhalla7/CloudScale-AI-Autonomous-FinOps-Orchestrator.mlflow"
-  experiment_name: "cloudscale-ppo-phase1"
-  run_name_prefix: "ppo"
-  dagshub_repo_owner: "bhanujbhalla7"
-  dagshub_repo_name: "CloudScale-AI-Autonomous-FinOps-Orchestrator"
+# Weights & Biases (replaces DagsHub/MLflow)
+wandb:
+  entity: "bhanujbhalla7-mpstme"
+  project: "cloudscale-ppo-phase1"
+  tags: ["ppo", "phase1", "k8s-spot", "rl-finops"]
   log_model_artifact: true

@@ -38,7 +38,7 @@ inference.
 │   (Control & Inference)  │    │   (Training & MLOps)     │    │ (Real infra)             │
 │                          │    │                          │    │                          │
 │  FastAPI backend         │◄──►│  Google Colab (T4 GPU)   │    │  Civo K3s cluster        │
-│  LangChain agent         │    │  DagsHub MLflow          │    │  Prometheus              │
+│  LangChain agent         │    │  Weights & Biases (W&B)  │    │  Prometheus              │
 │  Trained PPO inference   │    │  Optuna HP search        │    │  Apache Kafka            │
 │  OrbStack (build only)   │    │                          │    │  Feast (feature store)   │
 └──────────────────────────┘    └──────────────────────────┘    └──────────────────────────┘
@@ -51,7 +51,7 @@ inference.
 | Plane | Lives in | Tech |
 |---|---|---|
 | **Local** | Your Mac | FastAPI, LangChain, Stable-Baselines3, OrbStack |
-| **Cloud** | Free cloud services | Google Colab, DagsHub, Optuna |
+| **Cloud** | Free cloud services | Google Colab, Weights & Biases, Optuna |
 | **Dataplane** | Civo K3s (real cluster) | K3s, Prometheus, Kafka, Feast, OPA |
 
 ---
@@ -60,7 +60,7 @@ inference.
 
 | Phase | Status | Deliverable |
 |---|---|---|
-| **1. Simulator** | ✅ Done | Custom Gym env + PPO pipeline + Optuna + MLflow + Colab notebook |
+| **1. Simulator** | ✅ Done | Custom Gym env + PPO pipeline + Optuna + W&B + Colab notebook |
 | **2. Dataplane** | ⏳ Next | Civo K3s + Prometheus + Kafka + Feast + Ngrok tunnel |
 | **3. Closed Loop** | ⏳ Pending | FastAPI orchestrator + OPA guardrails + live kubectl execution |
 | **4. Interface & Polish** | ⏳ Pending | LangChain NL ops + God-tier README + architecture diagrams |
@@ -93,13 +93,13 @@ and latencies.
 
 ```bash
 python -m cloudscale.training.train_ppo \
-    --mode single --total-timesteps 2000 --no-mlflow --device cpu
+    --mode single --total-timesteps 2000 --no-wandb --device cpu
 ```
 
 ### 4. Real training on Colab (200k steps, ~5 min on T4)
 
 See [`cloudscale/notebooks/train_colab.ipynb`](cloudscale/notebooks/train_colab.ipynb).
-You'll need a free DagsHub token — see [`MANUAL_STEPS.md`](./MANUAL_STEPS.md).
+You'll need a free W&B API key — see [`MANUAL_STEPS.md`](./MANUAL_STEPS.md).
 
 ### 5. Evaluate a trained model
 
@@ -121,7 +121,7 @@ Plots rollouts into `cloudscale/logs/eval/episode_*.png`.
 │   ├── envs/
 │   │   └── k8s_spot_env.py          # Custom Gymnasium env (the "brain playground")
 │   ├── training/
-│   │   ├── train_ppo.py             # Single + Optuna training, MLflow to DagsHub
+│   │   ├── train_ppo.py             # Single + Optuna training, W&B experiment tracking
 │   │   └── eval_policy.py           # Rollout + plots + metrics JSON
 │   ├── notebooks/
 │   │   └── train_colab.ipynb        # Google Colab launcher
@@ -148,8 +148,8 @@ Plots rollouts into `cloudscale/logs/eval/episode_*.png`.
 |---|---|---|
 | Core brain | Stable-Baselines3 (PPO) | Proves multi-objective RL mastery |
 | Env | Gymnasium | Industry standard RL interface |
-| HP search | Optuna | TPE + pruning, plays nice with MLflow |
-| Tracking | MLflow on DagsHub | Free hosted MLOps, no infra to manage |
+| HP search | Optuna | TPE + pruning, plays nice with W&B |
+| Tracking | Weights & Biases | Free hosted MLOps, beautiful dashboards |
 | Stream | Apache Kafka | Enterprise event bus, not toy CSV |
 | Features | Feast | Sub-ms online feature serving |
 | Telemetry | Prometheus | Native K8s monitoring |
@@ -159,9 +159,9 @@ Plots rollouts into `cloudscale/logs/eval/episode_*.png`.
 
 ---
 
-## MLflow / DagsHub dashboard
+## W&B experiment dashboard
 
-Live experiments: <https://dagshub.com/bhanujbhalla7/CloudScale-AI-Autonomous-FinOps-Orchestrator.mlflow>
+Live experiments: <https://wandb.ai/bhanujbhalla7-mpstme/cloudscale-ppo-phase1>
 
 ---
 

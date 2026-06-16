@@ -34,7 +34,10 @@ logs/*.log
 logs/*.json
 !logs/.gitkeep
 
-# MLflow local runs
+# W&B local cache
+wandb/
+
+# MLflow local runs (legacy)
 mlruns/
 mlartifacts/
 
@@ -49,3 +52,4 @@ mlartifacts/
 .ipynb_checkpoints/
 profile_default/
 ipython_config.py
+mlflow.db
