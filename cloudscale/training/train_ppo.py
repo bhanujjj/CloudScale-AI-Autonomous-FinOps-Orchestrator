@@ -152,6 +152,7 @@ def setup_wandb(cfg: dict, use_wandb: bool, seed: int) -> bool:
             name=f"ppo-seed{seed}-{int(time.time())}",
             tags=wandb_cfg.get("tags", ["ppo", "phase1", "k8s-spot"]),
             save_code=True,
+            sync_tensorboard=True,
         )
         LOG.info("wandb.connected", entity=wandb_cfg.get("entity"), project=wandb_cfg.get("project"))
         return True
@@ -193,10 +194,17 @@ def train_single(args, cfg: dict) -> dict[str, float]:
     )
     ppo_kwargs["device"] = args.device
 
+    callbacks = []
+    if args.use_wandb:
+        import wandb
+        from wandb.integration.sb3 import WandbCallback
+        ppo_kwargs["tensorboard_log"] = f"logs/tb_{wandb.run.id}"
+        callbacks.append(WandbCallback(verbose=0))
+
     LOG.info("training.start", timesteps=args.total_timesteps, device=args.device)
     t0 = time.time()
     model = PPO(env=env, **ppo_kwargs)
-    model.learn(total_timesteps=args.total_timesteps, progress_bar=False)
+    model.learn(total_timesteps=args.total_timesteps, progress_bar=False, callback=callbacks)
     train_seconds = time.time() - t0
     LOG.info("training.done", seconds=round(train_seconds, 1))
 
